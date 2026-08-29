@@ -4,3 +4,5 @@ target/
 **/*.wasm
 Cargo.lock
 .DS_Store
+config.bat
+node_modules
