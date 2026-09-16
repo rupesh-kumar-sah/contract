@@ -1056,6 +1056,8 @@ impl GlobeWallet {
     /// # Errors
     /// * [`WalletError::InvalidAssetCode`] — `asset.code` is empty or exceeds
     ///   [`Self::MAX_ASSET_CODE_LEN`].
+    /// * [`WalletError::InvalidAssetInfo`] — `asset.issuer` is present for native
+    ///   asset XLM (case-insensitive), or absent for non-native assets.
     /// * [`WalletError::AssetAlreadyAdded`] — asset code already registered
     ///   (case-insensitive — see [`AssetInfo::code`]'s doc comment).
     /// * [`WalletError::AssetLimitExceeded`] — user would exceed [`Self::MAX_ASSETS`].
@@ -1066,7 +1068,7 @@ impl GlobeWallet {
             return Err(WalletError::InvalidAssetCode);
         }
 
-        let is_native = asset.code == String::from_str(&env, "XLM");
+        let is_native = Self::codes_match_case_insensitive(&asset.code, &String::from_str(&env, "XLM"));
         if is_native {
             if asset.issuer.is_some() {
                 return Err(WalletError::InvalidAssetInfo);
@@ -3210,6 +3212,40 @@ mod tests {
             client.try_add_asset(&user, &bogus),
             Err(Ok(WalletError::InvalidAssetInfo))
         );
+    }
+
+    #[test]
+    fn test_case_variant_xlm_with_issuer_rejected_and_cannot_squat_native() {
+        let (env, _cid, _admin, client) = setup();
+        let user = Address::generate(&env);
+        let fake_issuer = Address::generate(&env);
+
+        // Lowercase "xlm" with issuer must be rejected
+        let bogus_lower = AssetInfo {
+            code: String::from_str(&env, "xlm"),
+            issuer: Some(fake_issuer.clone()),
+        };
+        assert_eq!(
+            client.try_add_asset(&user, &bogus_lower),
+            Err(Ok(WalletError::InvalidAssetInfo))
+        );
+
+        // Mixed-case "Xlm" with issuer must be rejected
+        let bogus_mixed = AssetInfo {
+            code: String::from_str(&env, "Xlm"),
+            issuer: Some(fake_issuer),
+        };
+        assert_eq!(
+            client.try_add_asset(&user, &bogus_mixed),
+            Err(Ok(WalletError::InvalidAssetInfo))
+        );
+
+        // Real native XLM (no issuer) can still be registered successfully
+        let real_xlm = AssetInfo {
+            code: String::from_str(&env, "XLM"),
+            issuer: None,
+        };
+        assert_eq!(client.try_add_asset(&user, &real_xlm), Ok(Ok(())));
     }
 
     #[test]
