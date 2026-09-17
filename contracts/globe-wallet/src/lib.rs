@@ -1120,7 +1120,7 @@ impl GlobeWallet {
         let mut found = false;
         for i in 0..assets.len() {
             let a = assets.get(i).unwrap();
-            if a.code == asset_code {
+            if Self::codes_match_case_insensitive(&a.code, &asset_code) {
                 found = true;
             } else {
                 new_assets.push_back(a);
@@ -1781,6 +1781,42 @@ mod tests {
         let user = Address::generate(&env);
         assert_eq!(
             client.try_remove_asset(&user, &String::from_str(&env, "XLM")),
+            Err(Ok(WalletError::AssetNotFound))
+        );
+    }
+
+    #[test]
+    fn test_remove_asset_case_insensitive() {
+        let (env, _cid, _admin, client) = setup();
+        let user = Address::generate(&env);
+        client.add_asset(&user, &xlm(&env));
+        client.add_asset(&user, &usdc(&env)); // registered as "USDC"
+
+        // Remove using lowercase "usdc"
+        client.remove_asset(&user, &String::from_str(&env, "usdc"));
+        let assets = client.get_assets(&user);
+        assert_eq!(assets.len(), 1);
+        assert_eq!(assets.get(0).unwrap().code, String::from_str(&env, "XLM"));
+
+        // Remove XLM using mixed case "xLm"
+        client.remove_asset(&user, &String::from_str(&env, "xLm"));
+        let assets = client.get_assets(&user);
+        assert_eq!(assets.len(), 0);
+    }
+
+    #[test]
+    fn test_remove_asset_genuinely_nonexistent_any_casing_fails() {
+        let (env, _cid, _admin, client) = setup();
+        let user = Address::generate(&env);
+        client.add_asset(&user, &usdc(&env));
+
+        // Attempting to remove unregistered code under any casing returns AssetNotFound
+        assert_eq!(
+            client.try_remove_asset(&user, &String::from_str(&env, "eurc")),
+            Err(Ok(WalletError::AssetNotFound))
+        );
+        assert_eq!(
+            client.try_remove_asset(&user, &String::from_str(&env, "EURC")),
             Err(Ok(WalletError::AssetNotFound))
         );
     }
