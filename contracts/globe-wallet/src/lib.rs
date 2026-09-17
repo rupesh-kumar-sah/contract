@@ -1138,6 +1138,12 @@ impl GlobeWallet {
             PERSISTENT_TTL_THRESHOLD,
             PERSISTENT_TTL_EXTEND_TO,
         );
+        env.storage()
+            .persistent()
+            .remove(&DataKey::SpendLimit(user.clone(), asset_code.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::DailySpent(user.clone(), asset_code.clone()));
         env.events()
             .publish((Symbol::new(&env, "asset_removed"),), (user, asset_code));
         Ok(())
@@ -1783,6 +1789,33 @@ mod tests {
             client.try_remove_asset(&user, &String::from_str(&env, "XLM")),
             Err(Ok(WalletError::AssetNotFound))
         );
+    }
+
+    #[test]
+    fn test_remove_asset_cleans_up_spend_limit_and_daily_spent() {
+        let (env, _cid, _admin, client) = setup();
+        let user = Address::generate(&env);
+        let code = String::from_str(&env, "USDC");
+        client.add_asset(&user, &usdc(&env));
+        client.set_spend_limit(&user, &code, &500);
+        client.record_spend(&user, &code, &200);
+
+        assert_eq!(client.get_spend_limit(&user, &code), 500);
+
+        client.remove_asset(&user, &code);
+        assert_eq!(client.get_assets(&user).len(), 0);
+
+        // Spend limit is cleared to 0 (default / unlimited)
+        assert_eq!(client.get_spend_limit(&user, &code), 0);
+
+        // Re-adding the asset starts fresh with no inherited spend limit
+        client.add_asset(&user, &usdc(&env));
+        assert_eq!(client.get_spend_limit(&user, &code), 0);
+
+        // Re-setting spend limit and recording spend works fresh
+        client.set_spend_limit(&user, &code, &500);
+        assert_eq!(client.get_spend_limit(&user, &code), 500);
+        client.record_spend(&user, &code, &500);
     }
 
     #[test]
